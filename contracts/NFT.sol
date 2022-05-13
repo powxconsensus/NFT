@@ -65,10 +65,9 @@ contract NFT {
         array.pop();
     }
 
-    function removeElementFromAddresstArray(
-        address[] storage array,
-        address ele
-    ) internal {
+    function removeElementFromAddressArray(address[] storage array, address ele)
+        internal
+    {
         uint256 idx = array.length;
         for (uint256 i = 0; i < array.length; i++) {
             if (array[i] == ele) {
@@ -118,6 +117,8 @@ contract NFT {
     }
 
     function deleteNFT(uint256 _id) public onlyOwner(_id) {
+        require(!minted[_id].isForSale, "nft is for sale: cann't be removed");
+        removeElementFromUintArray(addressToNFTID[msg.sender], _id);
         delete minted[_id];
         emit nftDeleted(msg.sender, _id);
     }
@@ -129,6 +130,7 @@ contract NFT {
 
     //owner of nft can make their nft for sale so that others can bid on it
     function makeNFTForSale(uint256 _id) public onlyOwner(_id) {
+        require(!minted[_id].isForSale, "nft is already for sale");
         minted[_id].isForSale = true;
         forSale.push(_id);
     }
@@ -173,7 +175,7 @@ contract NFT {
         delete bids[_id].biddingAmount[msg.sender];
         bids[_id].biddersCount--;
         payable(msg.sender).transfer(amount);
-        removeElementFromAddresstArray(bids[_id].bidders, msg.sender);
+        removeElementFromAddressArray(bids[_id].bidders, msg.sender);
         emit withDrawFromBidding(msg.sender, _id, amount);
     }
 
