@@ -22,7 +22,7 @@ contract NFT {
     uint256 index = 0;
     mapping(uint256 => nftBidding) public bids;
     //  a person bidded to which nft
-    mapping(address => uint256[]) public biddedOn;
+    mapping(address => uint256[]) biddedOn;
 
     constructor() {}
 
@@ -32,6 +32,11 @@ contract NFT {
         address indexed from,
         address indexed to,
         uint256 nftID
+    );
+    event withDrawFromBidding(
+        address indexed who,
+        uint256 indexed from,
+        uint256 amount
     );
     event biddingResult(
         uint256 biddingAmount,
@@ -43,6 +48,37 @@ contract NFT {
         require(_id < index, "nft not found");
         require(msg.sender == minted[_id].owner, "you are not owner");
         _;
+    }
+
+    function removeElementFromUintArray(uint256[] storage array, uint256 ele)
+        internal
+    {
+        uint256 idx = array.length;
+        for (uint256 i = 0; i < array.length; i++) {
+            if (array[i] == ele) {
+                idx = i;
+                break;
+            }
+        }
+        require(idx < array.length, "element not found in array");
+        array[idx] = array[array.length - 1];
+        array.pop();
+    }
+
+    function removeElementFromAddresstArray(
+        address[] storage array,
+        address ele
+    ) internal {
+        uint256 idx = array.length;
+        for (uint256 i = 0; i < array.length; i++) {
+            if (array[i] == ele) {
+                idx = i;
+                break;
+            }
+        }
+        require(idx < array.length, "element not found in array");
+        array[idx] = array[array.length - 1];
+        array.pop();
     }
 
     function mint(string memory _name, uint256 _price) public {
@@ -76,7 +112,8 @@ contract NFT {
         return minted[_id];
     }
 
-    function nftIDForBidding() public view returns (uint256[] memory) {
+    // nft with are for sale
+    function nftForBidding() public view returns (uint256[] memory) {
         return forSale;
     }
 
@@ -123,6 +160,23 @@ contract NFT {
         bids[_id].biddingAmount[msg.sender] += msg.value;
     }
 
+    //withdraw from bid
+    function withDraw(uint256 _id) public {
+        require(_id < index, "nft not found");
+        require(minted[_id].isForSale, "nft is not for sale");
+        require(
+            bids[_id].biddingAmount[msg.sender] > 0,
+            "you didn't bid for this nft bidding"
+        );
+        removeElementFromUintArray(biddedOn[msg.sender], _id);
+        uint256 amount = bids[_id].biddingAmount[msg.sender];
+        delete bids[_id].biddingAmount[msg.sender];
+        bids[_id].biddersCount--;
+        payable(msg.sender).transfer(amount);
+        removeElementFromAddresstArray(bids[_id].bidders, msg.sender);
+        emit withDrawFromBidding(msg.sender, _id, amount);
+    }
+
     /*
         returns id of nft to which msg.sender bidded on
    */
@@ -148,6 +202,8 @@ contract NFT {
         );
         for (uint256 i = 0; i < bids[_id].biddersCount; i++) {
             if (bids[_id].higgestBidder != bids[_id].bidders[i]) {
+                // removing _id from bidded array
+                removeElementFromUintArray(biddedOn[bids[_id].bidders[i]], _id);
                 // transfer their money who lost
                 payable(address(bids[_id].bidders[i])).transfer(
                     bids[_id].biddingAmount[bids[_id].bidders[i]]
@@ -157,12 +213,12 @@ contract NFT {
         address winner = bids[_id].higgestBidder;
         uint256 higgestAmount = bids[_id].higgestAmount;
         payable(minted[_id].owner).transfer(bids[_id].higgestAmount);
-        minted[_id].owner = winner;
+        removeElementFromUintArray(forSale, _id);
         minted[_id].isForSale = false;
-        for (uint256 idx = 0; idx < addressToNFTID[msg.sender].length; idx++) {
-            if (addressToNFTID[msg.sender][idx] == _id) {}
-        }
-
+        minted[_id].owner = winner;
+        removeElementFromUintArray(addressToNFTID[msg.sender], _id);
+        addressToNFTID[winner].push(_id);
+        // now msg.sender don't own nft with id _id
         delete bids[_id];
         // emit ownershipTransfer(msg.sender, winner, _id);
         emit biddingResult(higgestAmount, _id, msg.sender, winner);
@@ -176,10 +232,12 @@ contract NFT {
     function cancelBidding(uint256 _id) public onlyOwner(_id) {
         require(minted[_id].isForSale, "nft is not for sale");
         for (uint256 i = 0; i < bids[_id].biddersCount; i++) {
+            removeElementFromUintArray(biddedOn[bids[_id].bidders[i]], _id);
             payable(address(bids[_id].bidders[i])).transfer(
                 bids[_id].biddingAmount[bids[_id].bidders[i]]
             );
         }
+        removeElementFromUintArray(forSale, _id);
         minted[_id].isForSale = false;
         delete bids[_id];
     }
@@ -191,7 +249,10 @@ contract NFT {
         public
         onlyOwner(_id)
     {
+        require(!minted[_id].isForSale, "nft is for sale");
         minted[_id].owner = transferTo;
+        removeElementFromUintArray(addressToNFTID[msg.sender], _id);
+        addressToNFTID[transferTo].push(_id);
         emit ownershipTransfer(msg.sender, transferTo, _id);
     }
 }
